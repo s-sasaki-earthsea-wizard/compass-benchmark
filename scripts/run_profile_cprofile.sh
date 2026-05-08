@@ -16,8 +16,10 @@
 set -u
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LOG_DIR="${1:-${REPO_ROOT}/logs_cprofile_$(date +%Y%m%d_%H%M%S)}"
-LOG_DIR="$(mkdir -p "${LOG_DIR}" && cd "${LOG_DIR}" && pwd)"
+
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/resolve_log_dir.sh"
+LOG_DIR="$(resolve_log_dir cprofile "${1:-}")"
 
 source "$(dirname "$0")/lib/setup_ulimit.sh"
 # shellcheck disable=SC1091
@@ -48,7 +50,9 @@ START=$(date +%s)
 compose_run "${LOG_DIR}" bash -c '
 set -u
 export PYTHONUNBUFFERED=1
-S1_CSLC=$(which s1_cslc.py)
+# `which` is not installed in the Oracle Linux base image. POSIX
+# `command -v` is a builtin and always available.
+S1_CSLC=$(command -v s1_cslc.py)
 if [ -z "${S1_CSLC}" ]; then
     echo "[cprofile] s1_cslc.py not found on PATH" >&2
     exit 1
