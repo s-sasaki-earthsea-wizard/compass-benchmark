@@ -2,18 +2,24 @@
 #
 # Argument-passing contract:
 #   - LOG_DIR: per-run output directory. Empty/unset falls through to a
-#              timestamped logs_<tag>_<ts>/ directory chosen by the script.
-#              Passed positionally as the first script argument.
-#   - Environment variables (ULIMIT_FRACTION, etc.) follow normal make export
-#     rules; scripts read them directly.
+#              timestamped logs_<tag>_<ts>/ directory under
+#              $${BENCH_LOG_BASE:-$$HOME/compass-bench-logs}. Passed
+#              positionally as the first script argument.
+#   - BENCH_LOG_BASE: base dir for runs when LOG_DIR is not set. Defaults
+#              to $$HOME/compass-bench-logs (host-local; off NAS to avoid
+#              CIFS / py-spy interaction documented in issue #2).
+#   - Other environment variables (ULIMIT_FRACTION, etc.) follow normal
+#     make export rules; scripts read them directly.
 #
 # Usage examples:
 #   make build
 #   make prepare-data
 #   make smoke
-#   make baseline LOG_DIR=logs_baseline_001
+#   make baseline
 #   make profile-pyspy
-#   make profile-cprofile LOG_DIR=logs_cprof_001
+#   make profile-cprofile
+#   make baseline LOG_DIR=/tmp/one_off_logs_001    # override per call
+#   BENCH_LOG_BASE=/mnt/local-ssd/bench make profile-pyspy  # override base
 
 .DEFAULT_GOAL := help
 .PHONY: help build prepare-data smoke baseline profile-pyspy profile-cprofile clean

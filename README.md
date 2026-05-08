@@ -61,15 +61,40 @@ make prepare-data
 make smoke
 
 # 4. ベースライン (wall/RSSのみ)
-make baseline LOG_DIR=logs_baseline_$(date +%Y%m%d)
+make baseline
 
 # 5. プロファイル
-make profile-pyspy    LOG_DIR=logs_pyspy_$(date +%Y%m%d)
-make profile-cprofile LOG_DIR=logs_cprof_$(date +%Y%m%d)
+make profile-pyspy
+make profile-cprofile
 ```
 
-各 `logs_*/` 以下に生のflamegraph/pstats/wall/RSSが落ち、
+各runの生artifact (flamegraph/pstats/wall/RSS/CSLC h5など) は **デフォルトで
+`$HOME/compass-bench-logs/logs_<tag>_<timestamp>/`** に書かれ、
 [reports/](reports/) 配下のmdファイルに数値を手書き転記して正本化する。
+
+## ログ出力先のポリシー
+
+bench artifact は **デフォルトで `$HOME/compass-bench-logs/` 配下** に書く。
+理由は以下:
+
+- 本リポジトリは CIFS (SMB) でマウントされた NAS 上にある運用が想定されているが、
+  py-spy の ptrace attach + signal traffic は CIFS の長時間 syscall (特に
+  h5py の `_close_open_objects`) と競合し、`errno=103 (ECONNABORTED)` で
+  クラッシュすることが確認されている (compass-benchmark issue #2)。
+  ホストローカルな POSIX FS (ext4 等) に書けば再現しない。
+- `/tmp` は systemd-tmpfiles により boot 時にクリアされる運用が標準的なため
+  避ける。`$HOME` 配下なら永続性が確保される。
+- 出力先を変える必要がある場合 (CI、別ディスク、共有マウント等) は以下で上書きできる:
+
+  ```bash
+  # base dir 全体を変える
+  BENCH_LOG_BASE=/mnt/local-ssd/bench make profile-pyspy
+
+  # 1 回限り、特定 run の絶対パスを直接渡す (1st arg)
+  make profile-pyspy LOG_DIR=/path/to/logs_pyspy_001
+  ```
+
+優先順位: **`LOG_DIR` (1st arg) > `BENCH_LOG_BASE`/logs_<tag>_<ts> > `$HOME/compass-bench-logs/logs_<tag>_<ts>`**。
 
 ## ターゲットデータ
 
