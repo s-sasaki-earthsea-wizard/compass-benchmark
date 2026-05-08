@@ -12,8 +12,10 @@
 set -u
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LOG_DIR="${1:-${REPO_ROOT}/logs_smoke_$(date +%Y%m%d_%H%M%S)}"
-LOG_DIR="$(mkdir -p "${LOG_DIR}" && cd "${LOG_DIR}" && pwd)"
+
+# shellcheck disable=SC1091
+source "$(dirname "$0")/lib/resolve_log_dir.sh"
+LOG_DIR="$(resolve_log_dir smoke "${1:-}")"
 
 source "$(dirname "$0")/lib/setup_ulimit.sh"
 # shellcheck disable=SC1091
