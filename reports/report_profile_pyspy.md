@@ -16,6 +16,15 @@ cProfile (see [report_profile_cprofile.md](report_profile_cprofile.md)),
 completes cleanly. Root-cause investigation is **out of scope** for this
 session; this report records only what was observed.
 
+> **Profiling completion status: NOT met.** Because the traced workload
+> aborts before CSLC product creation finishes, the flamegraph covers
+> only the geocode phase, not the QA/browse/metadata phase. A profile
+> of an incomplete run cannot be used to reason about the E2E pipeline.
+> The next session pivots to ensuring the SAFE → CSLC pipeline
+> completes under py-spy before any profiling result is consumed.
+> Tracked at
+> [s-sasaki-earthsea-wizard/compass-benchmark#2](https://github.com/s-sasaki-earthsea-wizard/compass-benchmark/issues/2).
+
 ## Methodology
 
 - Harness: [`run_profile_pyspy.sh`](../scripts/run_profile_pyspy.sh)
@@ -70,9 +79,9 @@ The crash point is `h5py.File.close` exiting the `with` block in
 completion of the first DEM block and PYSOLID Earth-tides computation
 for the same burst.
 
-### Partial output
+### Partial output and what is missing
 
-A partial CSLC h5 is still on disk after the crash:
+A partial CSLC h5 is on disk after the crash:
 
 | File | Size | Note |
 |---|--:|---|
@@ -81,15 +90,43 @@ A partial CSLC h5 is still on disk after the crash:
 `tools/verify_output.py` was not run on this artifact (the harness
 gates it on a clean exit, which py-spy did not deliver).
 
+**The 68 MB gap reflects a structural truncation of the pipeline, not
+just a corrupt close.** `compass.s1_geocode_slc.run` opens the output
+h5 *twice*:
+
+1. **Block 1** (`with h5py.File(output_hdf5, 'w'): ...`, opens at line 121,
+   exits at line 243). Writes the geocoded CSLC raster: ISCE3
+   `geocode_slc` (cProfile: 20.5 s) and `write_direct` of the data
+   blocks (cProfile: 14.4 s).
+2. **Block 2** (`with h5py.File(output_hdf5, 'a'): ...`, opens at line 248).
+   Writes QA / metadata / browse: `make_browse_image` (cProfile:
+   4.65 s), `compute_CSLC_raster_stats` (4.38 s),
+   `percent_land_and_valid_pixels` (2.74 s),
+   `compute_correction_stats`, `populate_rfi_dict`, `set_orbit_type`,
+   plus `stats_json` write-out.
+
+The crash is at the **`__exit__` of Block 1** (line 121's close).
+The exception propagates immediately, so **Block 2 never runs**.
+Everything Block 2 would write into the h5 — QA stats, RFI dict,
+orbit type, browse-image-related metadata — is therefore absent
+from the partial product.
+
+In cProfile cumulative-time terms, that is a missing tail of roughly
+**12+ seconds of pipeline work** (≈ 22 % of baseline wall time);
+that work is also entirely absent from the flamegraph.
+
 ### Flamegraph
 
 `logs_pyspy_20260508/pyspy.svg` (132 KB) covers the ~46 s window from
-`py-spy record` start until the traced process died. Because the
-workload is truncated at h5py close (i.e. the very end of the geocode
-phase), **the flamegraph does not reflect a complete SAFE → CSLC run**
-and any inclusive-time numbers extracted from it will be biased toward
-pre-write phases. Region breakdown is therefore deferred to a future
-session in which py-spy completes a clean run.
+`py-spy record` start until the traced process died at the end of
+Block 1. Because the workload is truncated at the boundary between
+the geocode block and the QA/browse block, **the flamegraph does not
+reflect a complete SAFE → CSLC run**: it includes Block 1 (geocode +
+`write_direct`) but not Block 2 (browse + QA + raster stats +
+metadata). Inclusive-time numbers extracted from this SVG would
+therefore over-weight the geocode path and entirely miss the QA path.
+Region breakdown is deferred to a future session in which the traced
+workload reaches the end of `s1_geocode_slc.run` cleanly.
 
 ## Findings
 
@@ -109,7 +146,27 @@ session in which py-spy completes a clean run.
 
 ## Per-step deep dives (as needed)
 
-Deferred to a future session. The expected next step is to root-cause
-the py-spy + h5py close interaction (errno 103 = `ECONNABORTED`,
-unusual in pure-file context) — explicitly out of scope for this
-session per the run plan.
+Deferred to a future session.
+
+## Pivot for next session
+
+A profile of an incomplete CSLC run is meaningless: the QA/browse phase
+is missing from both the product and the flamegraph, and any hot-spot
+ranking from the partial flamegraph would mislead. The next session
+therefore re-scopes around **getting the SAFE → CSLC pipeline to
+complete under py-spy**, rather than producing more profiling output.
+
+Concrete starting points (objective, no hypothesis weighting):
+
+- Drop `--subprocesses` and/or `--idle` from `py-spy record` and rerun
+  to narrow which py-spy option is implicated.
+- Move `logs_*/` output from the NAS-backed bind mount to a host-local
+  path (e.g. `/tmp`) and rerun, to test whether the NAS file path is
+  involved (errno 103 = `ECONNABORTED`).
+- Try a newer py-spy (current bench image: 0.4.2).
+- Fix the `/usr/bin/time` wrapping order in `run_profile_pyspy.sh` so
+  the workload's own RSS is captured (current value reflects the
+  py-spy launcher only).
+
+Profiling result consumption resumes only after a py-spy run produces
+a CSLC h5 that passes `tools/verify_output.py`.
