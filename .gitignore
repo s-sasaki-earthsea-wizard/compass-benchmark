@@ -1,0 +1,29 @@
+# Bench/profile runs produce machine-dependent artifacts (wall time, RSS,
+# hostnames, /home paths) that have no meaning on a different machine.
+# The whole logs_*/ tree is therefore untracked. Numerical findings are
+# transcribed into the corresponding reports/report_*.md by hand; raw
+# artifacts live only on the developer's machine.
+logs_*/
+
+# Zenodo 7668411 raw downloads (5GB+, machine-specific paths).
+# Only the templates directly under fixtures/ are tracked; data/ is untracked.
+fixtures/data/
+
+# Defensive entry: nothing in this project creates a venv on the host
+# (everything runs inside the bench Docker image), but ignore one if it
+# ever appears so a stray local install does not get committed.
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Profiler intermediates that may end up on the host
+*.svg.tmp
+*.prof.tmp
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
