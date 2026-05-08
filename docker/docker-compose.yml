@@ -1,0 +1,59 @@
+# Docker Compose definition for compass-benchmark.
+# Invoked indirectly by scripts/run_*.sh as
+#   `docker compose -f docker/docker-compose.yml run --rm bench <cmd>`.
+#
+# Design notes:
+# - cap_add: SYS_PTRACE is mandatory for py-spy to sample other processes.
+#   Without it `py-spy record` fails with `Operation not permitted` because
+#   Docker's default seccomp + cap profile denies ptrace(2).
+# - User mapping (UID/GID) is not enforced here. The base image ships with a
+#   fixed-UID compass_user and a full conda env owned by that user. Re-mapping
+#   to the host UID via `--user` would break the conda env's permissions.
+#   Instead we rely on bind-mounted output dirs (logs_*) being writable by the
+#   container user; if that becomes painful, follow up with a setfacl on the
+#   host or with a gosu-based entrypoint.
+# - shm_size is bumped to 2GB because HDF5/GDAL workloads use POSIX shared mem
+#   heavily, and the Docker default of 64MB throttles large h5 reads/writes.
+# - mem_limit / memswap_limit are intentionally not set: scripts/lib/setup_ulimit.sh
+#   handles the OOM safety net dynamically based on /proc/meminfo.
+
+services:
+  bench:
+    image: compass-benchmark:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BASE_IMAGE: opera/cslc_s1:final_0.5.6
+    # Allow ptrace(2) for py-spy.
+    cap_add:
+      - SYS_PTRACE
+    # Loosen seccomp so py-spy's symbol resolution and ptrace work cleanly.
+    security_opt:
+      - seccomp=unconfined
+    # Bind mount layout:
+    #   /workspace -> compass-benchmark/      (full repo, scripts/tools/fixtures)
+    #   /data      -> fixtures/data/          (Zenodo downloads, gitignored)
+    #   /logs      -> ${LOG_DIR}              (per-run output, set by caller)
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace
+      - type: bind
+        source: ../fixtures/data
+        target: /data
+      - type: bind
+        source: ${LOG_DIR:-../logs_default}
+        target: /logs
+    # POSIX shared memory for HDF5 / GDAL.
+    shm_size: "2gb"
+    working_dir: /workspace
+    # tty/stdin default to false because most invocations are non-interactive
+    # script runs. Use `docker compose run --rm -it bench bash` for a shell.
+    tty: false
+    stdin_open: false
+    environment:
+      # Ensure Python tracebacks reach the log file unbuffered.
+      PYTHONUNBUFFERED: "1"
+      # Fraction of physical RAM that setup_ulimit.sh caps virtual memory at.
+      ULIMIT_FRACTION: "${ULIMIT_FRACTION:-80}"

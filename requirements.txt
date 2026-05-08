@@ -1,0 +1,9 @@
+# Profiling tooling installed into the COMPASS conda env inside the bench
+# Docker image. Versions are minimum bounds; the bench harness is tolerant of
+# newer releases as long as the public CLI of each tool stays compatible.
+py-spy>=0.4.0
+snakeviz>=2.2.0
+gprof2dot>=2024.6.6
+pyyaml>=6.0
+h5py>=3.10
+numpy>=1.24
