@@ -17,7 +17,9 @@ SHELL ["conda", "run", "--no-capture-output", "-n", "COMPASS", "/bin/bash", "-c"
 # Install profilers into the COMPASS conda env via plain pip.
 # Docker already isolates from the host, so an extra venv layer (uv, virtualenv)
 # would be over-engineering — we install straight into the conda env's site-packages.
-COPY requirements.txt /tmp/requirements.txt
+# COPY defaults to root ownership; the base image switches USER to compass_user
+# before this FROM, so the subsequent rm would fail without an explicit --chown.
+COPY --chown=compass_user:compass_user requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
