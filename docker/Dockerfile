@@ -23,11 +23,24 @@ COPY --chown=compass_user:compass_user requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
-# Mount points for runtime bind mounts. The actual sources are wired up by
-# docker-compose.yml: /workspace <- compass-benchmark/, /data <- fixtures/data,
-# /logs <- per-run LOG_DIR.
+# Grant py-spy file capabilities so the non-root compass_user can ptrace.
+# Background: docker-compose.yml sets `cap_add: SYS_PTRACE`, which puts the
+# capability into the container's bounding set, but for non-root processes the
+# capability is NOT lifted into the effective set automatically. The fix is to
+# tag the py-spy binary itself with `cap_sys_ptrace+eip` so the capability is
+# inherited into the effective set on exec.
+#
+# `libcap` is not in the base image, so install it first. yum is invoked once
+# in this layer to keep the image lean.
+#
+# Mount points for runtime bind mounts (/workspace, /data, /logs) are also
+# created in this same root step to avoid an extra USER toggle.
 USER root
-RUN mkdir -p /workspace /data /logs \
+RUN yum -y install libcap \
+    && yum clean all \
+    && setcap cap_sys_ptrace+eip /home/compass_user/miniforge3/envs/COMPASS/bin/py-spy \
+    && getcap /home/compass_user/miniforge3/envs/COMPASS/bin/py-spy \
+    && mkdir -p /workspace /data /logs \
     && chown -R compass_user:compass_user /workspace /data /logs
 USER compass_user
 
