@@ -48,7 +48,9 @@ START=$(date +%s)
 compose_run "${LOG_DIR}" bash -c '
 set -u
 export PYTHONUNBUFFERED=1
-S1_CSLC=$(which s1_cslc.py)
+# `which` is not installed in the Oracle Linux base image. POSIX
+# `command -v` is a builtin and always available.
+S1_CSLC=$(command -v s1_cslc.py)
 if [ -z "${S1_CSLC}" ]; then
     echo "[cprofile] s1_cslc.py not found on PATH" >&2
     exit 1

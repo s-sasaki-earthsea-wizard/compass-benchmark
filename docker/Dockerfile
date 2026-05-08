@@ -30,13 +30,14 @@ RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt \
 # tag the py-spy binary itself with `cap_sys_ptrace+eip` so the capability is
 # inherited into the effective set on exec.
 #
-# `libcap` is not in the base image, so install it first. yum is invoked once
-# in this layer to keep the image lean.
+# `libcap` and GNU `time` (for `/usr/bin/time -v` rusage in run_baseline.sh
+# and the profile scripts) are not in the base image, so install them here.
+# yum is invoked once in this layer to keep the image lean.
 #
 # Mount points for runtime bind mounts (/workspace, /data, /logs) are also
 # created in this same root step to avoid an extra USER toggle.
 USER root
-RUN yum -y install libcap \
+RUN yum -y install libcap time \
     && yum clean all \
     && setcap cap_sys_ptrace+eip /home/compass_user/miniforge3/envs/COMPASS/bin/py-spy \
     && getcap /home/compass_user/miniforge3/envs/COMPASS/bin/py-spy \
